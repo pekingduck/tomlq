@@ -1,0 +1,6 @@
+TAGS
+*.lock
+.stack-work/
+*.db
+aux/init.sh
+.envrc
