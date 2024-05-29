@@ -38,26 +38,26 @@ type Query = NL.NonEmpty Subquery
 type Parser = Parsec Void String
 
 data Error
-  = QueryParsingError
+  = InvalidQuery
   | IndexOnTable
   | KeyOnArray
-  | ValueNotLeaf
-  | IndexOutOfRange
-  | KeyError String
-  | NotEnoughValues
+  | NonLeafNode
+  | IndexOutOfRange !Int
+  | KeyError !String
   | TomlError
   | PastLeafNode
+  | QueryMismatch
 
 instance Show Error where
-  show QueryParsingError = "Error parsing query"
-  show IndexOnTable      = "Trying to index a table"
-  show KeyOnArray        = "Trying to look "
-  show ValueNotLeaf      = "Querying a non-leaf node"
-  show IndexOutOfRange   = "Index out of range"
-  show (KeyError k)      = "KeyError: '" ++ k ++ "'"
-  show NotEnoughValues   = "Leaf node reached"
-  show TomlError         = "Error parsing TOML file"
-  show PastLeafNode      = "Trying to query past leaf node"
+  show InvalidQuery        = "Invalid query"
+  show IndexOnTable        = "Trying to index a table"
+  show KeyOnArray          = "Trying to key into an array"
+  show NonLeafNode         = "Querying a non-leaf node"
+  show (IndexOutOfRange i) = "Index out of range: " ++ show i
+  show (KeyError k)        = "Key does not exist: '" ++ k ++ "'"
+  show TomlError           = "Invalid TOML file"
+  show PastLeafNode        = "Trying to query past leaf node"
+  show QueryMismatch       = "Query mismatch"
 
 data Args
   = Args
@@ -67,8 +67,8 @@ data Args
 
 
 ---- Querty parsing
-parseQuery :: Parser [Subquery]
-parseQuery = (parseSubquery `sepBy` char subquerySep) <* eof
+parseQuery' :: Parser [Subquery]
+parseQuery' = (parseSubquery `sepBy` char subquerySep) <* eof
   where
     parseSubqueryKey :: Parser Subquery
     parseSubqueryKey = Key <$> some (alphaNumChar <|> char '_')
@@ -80,49 +80,58 @@ parseQuery = (parseSubquery `sepBy` char subquerySep) <* eof
     parseSubquery = parseSubqueryKey <|> parseSubqueryIndex
 
 -- Check if the first subquery is of Key k
-parseQuery' :: String -> Either Error Query
-parseQuery' queryString = do
-  query <- maybe (Left QueryParsingError) Right (parseMaybe parseQuery queryString)
+parseQuery :: String -> Either Error Query
+parseQuery queryString = do
+  query <- maybe (Left InvalidQuery) Right (parseMaybe parseQuery' queryString)
   case query of
-    []          -> Left QueryParsingError
-    (Index _:_) -> Left QueryParsingError
+    []          -> Left InvalidQuery
+    (Index _:_) -> Left InvalidQuery
     (k:ks)      -> Right (k NL.:| ks)
 
-----
-listIndex :: Int -> [a] -> Either Error a
-listIndex i l | i < 0 = Left IndexOutOfRange
-              | otherwise = case (l, i) of
-                   ([], _)   -> Left IndexOutOfRange
-                   (x:_, 0)  -> Right x
-                   (_:xs, _) -> listIndex (i-1) xs
+---- Query a list
+queryList :: Int -> Int -> [a] -> Either Error a
+queryList ogIndex index list | index < 0 = Left (IndexOutOfRange ogIndex)
+                     | otherwise = case (list, index) of
+                         ([], _)   -> Left (IndexOutOfRange ogIndex)
+                         (x:_, 0)  -> Right x
+                         (_:xs, _) -> queryList ogIndex (index-1) xs
 
-getValue :: Subquery -> Value -> Either Error Value
-getValue (Index i) (Array arr) = case listIndex i arr of
-  Right (Array _) -> Left ValueNotLeaf
-  Right (Table _) -> Left ValueNotLeaf
-  Right value     -> Right value
-  Left e          -> Left e
-getValue (Key k) (Table t)     = case maybe (Left (KeyError k)) Right (M.lookup k t) of
-  Right (Array _) -> Left ValueNotLeaf
-  Right (Table _) -> Left ValueNotLeaf
-  Right value     -> Right value
-  Left e          -> Left e
-getValue k v                   = traceShowM' (show k ++ "->" ++ show v) >> Left PastLeafNode
+-- Query a table
+queryTable :: String -> Table -> Either Error Value
+queryTable key table = maybe (Left (KeyError key)) Right (M.lookup key table)
 
+-- Query a value
 queryValue :: Query -> Value -> Either Error Value
-queryValue (q NL.:| []) a@(Array _) = getValue q a
-queryValue (q NL.:| []) t@(Table _) = getValue q t
-queryValue (_ NL.:| []) _ = Left NotEnoughValues
+queryValue (q NL.:| []) a@(Array _) = getLeaf q a
+queryValue (q NL.:| []) t@(Table _) = getLeaf q t
+queryValue (_ NL.:| []) _ = Left PastLeafNode
 queryValue (q NL.:| (k:ks)) value =
-  let nl = k NL.:| ks in
+  let query  = k NL.:| ks in
     case (q, value) of
+      (Key k', Table table)  -> queryTable k' table >>= queryValue query
+      (Index idx, Array arr) -> queryList idx idx arr >>= queryValue query
       (Key _, Array _)       -> Left KeyOnArray
       (Index _, Table _)     -> Left IndexOnTable
-      (Key k', Table table)  ->
-        maybe (Left (KeyError k')) (queryValue nl) (M.lookup k' table)
-      (Index idx, Array arr) -> listIndex idx arr >>= queryValue nl
-      _                      -> Left NotEnoughValues
+      _otherwise             -> Left PastLeafNode
 
+-- Reach the last subquery and try to retrieve a simple (i.e. non-table,
+-- non-list) value
+getLeaf :: Subquery -> Value -> Either Error Value
+getLeaf subquery value =
+  let result =
+        case (subquery, value) of
+          (Index index, Array arr) -> queryList index index arr
+          (Key key, Table table)   -> queryTable key table
+          (Index _, Table _)       -> Left IndexOnTable
+          (Key _, Array _)         -> Left KeyOnArray
+          _result                  -> Left QueryMismatch
+   in case result of
+        Left e          -> Left e
+        Right (Array _) -> Left NonLeafNode
+        Right (Table _) -> Left NonLeafNode
+        Right value'    -> Right value'
+
+-- CLI
 helpText :: String
 helpText = [r|
 Query: key1.key2.[index], e.g.'database.ports.[1]'.
@@ -140,8 +149,9 @@ parseOptions = O.info (argParse <**> O.helper)
       <$> O.strOption ( O.short 'q' <> O.metavar "QUERY")
       <*> O.strArgument ( O.metavar "FILE" )
 
-valueToStr :: Value -> String
-valueToStr v = case v of
+-- Output related
+showValue :: Value -> String
+showValue v = case v of
   String s      -> s
   Integer i     -> show i
   Float f       -> show f
@@ -153,10 +163,10 @@ valueToStr v = case v of
   Array _       -> error "Array returned, please file bug report"
   Table _       -> error "Table returned, please file bug report"
 
-traceShowM' :: (Applicative m, Show s) => s -> m ()
-traceShowM' = traceShowM
--- traceShowM' :: Applicative m => a -> m ()
--- traceShowM' = const (pure ())
+-- traceShowM' :: (Applicative m, Show s) => s -> m ()
+-- traceShowM' = traceShowM
+traceShowM' :: Applicative m => a -> m ()
+traceShowM' = const (pure ())
 
 main :: IO ()
 main = do
@@ -164,13 +174,13 @@ main = do
   traceShowM' args
   content <- readFileOrStdin (filePath args)
   let result = do
-        query <- parseQuery' (queryStr args)
+        query <- parseQuery (queryStr args)
         table <- either (const (Left TomlError)) Right (TM.parse content)
         queryValue query (Table table)
   case result of
     Left err    -> do
         hPrint stderr err >> exitFailure
-    Right value -> putStrLn $ valueToStr value
+    Right value -> putStrLn $ showValue value
   where
     readFileOrStdin :: String -> IO String
     readFileOrStdin path = do
