@@ -24,12 +24,17 @@ function test_date() {
     assert_equals "$OUT" "1979-05-27 07:32:00 -0800"
 }
 
+function test_float() {
+    OUT=$(run "database.temp_targets.cpu")
+    assert_successful_code
+    assert_equals "$OUT" 79.5
+}
+
 function test_array() {
     OUT=$(run "database.ports.[1]")
     assert_successful_code
     assert_equals "$OUT" "8001"
 }
-
 
 function test_array_of_arrays() {
     OUT=$(run "database.ports.[1]")
