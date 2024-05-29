@@ -4,10 +4,9 @@
 module Main (main) where
 
 import           Control.Applicative        hiding (many, some)
-import qualified Data.List.NonEmpty         as NL
 import           Data.Map                   as M
 import           Data.Void                  (Void)
-import           Debug.Trace                (traceShowM)
+--import           Debug.Trace                (traceShowM)
 import qualified Options.Applicative        as O
 import           System.Exit                (exitFailure)
 import           System.IO
@@ -30,10 +29,8 @@ instance Show Subquery where
   show (Key s)   = "key: " ++ s
   show (Index i) = "[" ++ show i ++ "]"
 
-subquerySep :: Char
-subquerySep = '.'
-
-type Query = NL.NonEmpty Subquery
+-- The first subquery must always be Key
+data Query = Query !String ![Subquery] deriving Show
 
 type Parser = Parsec Void String
 
@@ -46,7 +43,6 @@ data Error
   | KeyError !String
   | TomlError
   | PastLeafNode
-  | QueryMismatch
 
 instance Show Error where
   show InvalidQuery        = "Invalid query"
@@ -57,19 +53,38 @@ instance Show Error where
   show (KeyError k)        = "Key does not exist: '" ++ k ++ "'"
   show TomlError           = "Invalid TOML file"
   show PastLeafNode        = "Trying to query past leaf node"
-  show QueryMismatch       = "Query mismatch"
 
+-- Command line args
 data Args
   = Args
   { queryStr :: !String
   , filePath :: !String
   } deriving Show
 
+---- Query parsing
+parseQuery :: String -> Either Error Query
+parseQuery queryString =
+  case parseMaybe parseQuery' queryString of
+    Nothing    -> Left InvalidQuery
+    Just query -> Right query
 
----- Querty parsing
-parseQuery' :: Parser [Subquery]
-parseQuery' = (parseSubquery `sepBy` char subquerySep) <* eof
   where
+    subquerySep :: Char
+    subquerySep = '.'
+
+    parseQuery' :: Parser Query
+    parseQuery' = do
+      -- E.g. For query = "a.b.c",
+      -- k would be "a",
+      -- and maybeQuery would be Just [Key "b", Key "b"]
+      Key k <- parseSubqueryKey
+      -- Need optional since it could be empty
+      maybeQuery <- optional (char subquerySep >> parseSubqueries <* eof)
+      pure $ maybe (Query k []) (Query k) maybeQuery
+
+    parseSubqueries :: Parser [Subquery]
+    parseSubqueries = parseSubquery `sepBy` char subquerySep
+
     parseSubqueryKey :: Parser Subquery
     parseSubqueryKey = Key <$> some (alphaNumChar <|> char '_')
 
@@ -78,15 +93,6 @@ parseQuery' = (parseSubquery `sepBy` char subquerySep) <* eof
 
     parseSubquery :: Parser Subquery
     parseSubquery = parseSubqueryKey <|> parseSubqueryIndex
-
--- Check if the first subquery is of Key k
-parseQuery :: String -> Either Error Query
-parseQuery queryString = do
-  query <- maybe (Left InvalidQuery) Right (parseMaybe parseQuery' queryString)
-  case query of
-    []          -> Left InvalidQuery
-    (Index _:_) -> Left InvalidQuery
-    (k:ks)      -> Right (k NL.:| ks)
 
 ---- Query a list
 queryList :: Int -> Int -> [a] -> Either Error a
@@ -101,35 +107,17 @@ queryTable :: String -> Table -> Either Error Value
 queryTable key table = maybe (Left (KeyError key)) Right (M.lookup key table)
 
 -- Query a value
-queryValue :: Query -> Value -> Either Error Value
-queryValue (q NL.:| []) a@(Array _) = getLeaf q a
-queryValue (q NL.:| []) t@(Table _) = getLeaf q t
-queryValue (_ NL.:| []) _ = Left PastLeafNode
-queryValue (q NL.:| (k:ks)) value =
-  let query  = k NL.:| ks in
-    case (q, value) of
-      (Key k', Table table)  -> queryTable k' table >>= queryValue query
-      (Index idx, Array arr) -> queryList idx idx arr >>= queryValue query
-      (Key _, Array _)       -> Left KeyOnArray
-      (Index _, Table _)     -> Left IndexOnTable
-      _otherwise             -> Left PastLeafNode
-
--- Reach the last subquery and try to retrieve a simple (i.e. non-table,
--- non-list) value
-getLeaf :: Subquery -> Value -> Either Error Value
-getLeaf subquery value =
-  let result =
-        case (subquery, value) of
-          (Index index, Array arr) -> queryList index index arr
-          (Key key, Table table)   -> queryTable key table
-          (Index _, Table _)       -> Left IndexOnTable
-          (Key _, Array _)         -> Left KeyOnArray
-          _result                  -> Left QueryMismatch
-   in case result of
-        Left e          -> Left e
-        Right (Array _) -> Left NonLeafNode
-        Right (Table _) -> Left NonLeafNode
-        Right value'    -> Right value'
+queryValue :: [Subquery] -> Value -> Either Error Value
+queryValue [] (Array _) = Left NonLeafNode
+queryValue [] (Table _) = Left NonLeafNode
+queryValue [] value = Right value
+queryValue (q:qs) value =
+  case (q, value) of
+    (Key k', Table table)  -> queryTable k' table >>= queryValue qs
+    (Index idx, Array arr) -> queryList idx idx arr >>= queryValue qs
+    (Key _, Array _)       -> Left KeyOnArray
+    (Index _, Table _)     -> Left IndexOnTable
+    _otherwise             -> Left PastLeafNode
 
 -- CLI
 helpText :: String
@@ -174,9 +162,10 @@ main = do
   traceShowM' args
   content <- readFileOrStdin (filePath args)
   let result = do
-        query <- parseQuery (queryStr args)
+        Query k query <- parseQuery (queryStr args)
         table <- either (const (Left TomlError)) Right (TM.parse content)
-        queryValue query (Table table)
+        val <- maybe (Left (KeyError k)) Right (M.lookup k table)
+        queryValue query val
   case result of
     Left err    -> do
         hPrint stderr err >> exitFailure

@@ -54,6 +54,12 @@ function test_error_invalid_query() {
     assert_equals "$OUT" "Invalid query"
 }
 
+function test_error_empty_query() {
+    OUT=$(run "" 2>&1)
+    assert_general_error
+    assert_equals "$OUT" "Invalid query"
+}
+
 function test_error_past_leaf_node() {
     OUT=$(run "owner.dob.xyz" 2>&1)
     assert_general_error
