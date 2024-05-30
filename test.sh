@@ -42,7 +42,14 @@ function test_array_of_arrays() {
     assert_equals "$OUT" "8001"
 }
 
+function test_error_empty_doc() {
+    OUT=$(echo | $STACK_RUN -q "x" - 2>&1)
+    assert_general_error
+    assert_equals "$OUT" "Input is empty"
+}
+
 function test_error_file_not_found() {
+    rm -f xx.toml
     OUT=$($STACK_RUN -q "x" xx.toml 2>&1)
     assert_general_error
     assert_contains "does not exist" "$OUT"

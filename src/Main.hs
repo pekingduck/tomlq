@@ -43,6 +43,7 @@ data Error
   | KeyError !String
   | TomlError
   | PastLeafNode
+  | EmptyDoc
 
 instance Show Error where
   show InvalidQuery        = "Invalid query"
@@ -53,6 +54,7 @@ instance Show Error where
   show (KeyError k)        = "Key does not exist: '" ++ k ++ "'"
   show TomlError           = "Invalid TOML file"
   show PastLeafNode        = "Trying to query past leaf node"
+  show EmptyDoc            = "Input is empty"
 
 -- Command line args
 data Args
@@ -163,7 +165,7 @@ main = do
   content <- readFileOrStdin (filePath args)
   let result = do
         Query k query <- parseQuery (queryStr args)
-        table <- either (const (Left TomlError)) Right (TM.parse content)
+        table <- parseTOML content
         val <- maybe (Left (KeyError k)) Right (M.lookup k table)
         queryValue query val
   case result of
@@ -175,3 +177,8 @@ main = do
     readFileOrStdin path = do
       handle <- if path == "-" then pure stdin else openFile path ReadMode
       hGetContents' handle
+
+    parseTOML :: String -> Either Error (Map String Value)
+    parseTOML content = do
+      table <- either (const (Left TomlError)) Right (TM.parse content)
+      if M.null table then Left EmptyDoc else Right table
