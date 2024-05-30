@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# test cases for bashunit
+# test cases (bashunit)
 
 STACK_RUN="stack run --"
 function run() {
@@ -10,6 +10,12 @@ function run() {
 function set_up_before_script() {
     # Compile ans install bin (if not already)
     $STACK_RUN -h > /dev/null 2>&1
+}
+
+function test_top_level() {
+    OUT=$(run "title")
+    assert_successful_code
+    assert_equals "$OUT" "TOML Example"
 }
 
 function test_table() {

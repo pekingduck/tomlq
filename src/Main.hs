@@ -26,10 +26,11 @@ import           Toml                       as TM
 data Subquery = Key !String | Index !Int
 
 instance Show Subquery where
-  show (Key s)   = "key: " ++ s
+  show (Key s)   = "(Key:" ++ s ++ ")"
   show (Index i) = "[" ++ show i ++ "]"
 
--- The first subquery must always be Key
+-- Query cannot be empty and the first subquery must always be Key
+-- (i.e. !String)
 data Query = Query !String ![Subquery] deriving Show
 
 type Parser = Parsec Void String
@@ -97,12 +98,13 @@ parseQuery queryString =
     parseSubquery = parseSubqueryKey <|> parseSubqueryIndex
 
 ---- Query a list
+---- ogIndex - the original index used for composing error message
 queryList :: Int -> Int -> [a] -> Either Error a
 queryList ogIndex index list | index < 0 = Left (IndexOutOfRange ogIndex)
-                     | otherwise = case (list, index) of
-                         ([], _)   -> Left (IndexOutOfRange ogIndex)
-                         (x:_, 0)  -> Right x
-                         (_:xs, _) -> queryList ogIndex (index-1) xs
+                             | otherwise = case (list, index) of
+                                 ([], _)   -> Left (IndexOutOfRange ogIndex)
+                                 (x:_, 0)  -> Right x
+                                 (_:xs, _) -> queryList ogIndex (index-1) xs
 
 -- Query a table
 queryTable :: String -> Table -> Either Error Value
