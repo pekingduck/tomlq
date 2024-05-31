@@ -19,6 +19,7 @@ import           System.IO
 import           Text.RawString.QQ
 import           Toml                as TM
 
+import           Control.Monad       (forM)
 import           Tomlq.Parser
 import           Tomlq.Types
 
@@ -91,11 +92,12 @@ main = do
   traceShowM' args
   content <- readFileOrStdin (filePath args)
   let result = do
-        Query k query <- head <$> parseQueries (queryStr args)
-        table <- parseTOML content
-        val <- maybe (Left (KeyError k)) Right (M.lookup k table)
-        queryValue query val
-  case result of
+        queries <- parseQueries (queryStr args)
+        doc <- parseTOML content
+        forM queries $ \(Query k query) -> do
+          val <- maybe (Left (KeyError k)) Right (M.lookup k doc)
+          queryValue query val
+  case head <$> result of
     Left err    -> do
         hPrint stderr err >> exitFailure
     Right value -> putStrLn $ showValue value
