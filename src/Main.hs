@@ -65,28 +65,31 @@ data Args
   } deriving Show
 
 ---- Query parsing
-parseQuery :: String -> Either Error Query
-parseQuery queryString =
-  case parseMaybe parseQuery' queryString of
-    Nothing    -> Left InvalidQuery
-    Just query -> Right query
+parseQueries :: String -> Either Error [Query]
+parseQueries queryString =
+  case parseMaybe (parseQuery `sepBy` querySep <* eof) queryString of
+    Just (q:qs) -> Right (q:qs)
+    _otherwise  -> traceShowM' _otherwise >> Left InvalidQuery
 
   where
-    subquerySep :: Char
-    subquerySep = '.'
+    subquerySep :: Parser Char
+    subquerySep = char '.'
 
-    parseQuery' :: Parser Query
-    parseQuery' = do
+    querySep :: Parser Char
+    querySep = char ','
+
+    parseQuery :: Parser Query
+    parseQuery = do
       -- E.g. For query = "a.b.c",
       -- k would be "a",
       -- and maybeQuery would be Just [Key "b", Key "b"]
       Key k <- parseSubqueryKey
       -- Need optional since it could be empty
-      maybeQuery <- optional (char subquerySep >> parseSubqueries <* eof)
+      maybeQuery <- optional (subquerySep >> parseSubqueries)
       pure $ maybe (Query k []) (Query k) maybeQuery
 
     parseSubqueries :: Parser [Subquery]
-    parseSubqueries = parseSubquery `sepBy` char subquerySep
+    parseSubqueries = parseSubquery `sepBy` subquerySep
 
     parseSubqueryKey :: Parser Subquery
     parseSubqueryKey = Key <$> some (alphaNumChar <|> char '_')
@@ -166,7 +169,7 @@ main = do
   traceShowM' args
   content <- readFileOrStdin (filePath args)
   let result = do
-        Query k query <- parseQuery (queryStr args)
+        Query k query <- head <$> parseQueries (queryStr args)
         table <- parseTOML content
         val <- maybe (Left (KeyError k)) Right (M.lookup k table)
         queryValue query val
