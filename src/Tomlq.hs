@@ -3,12 +3,11 @@
 
 module Main (main) where
 
-import           Control.Applicative        hiding (many, some)
-import           Data.Map                   as M
-import           Data.Void                  (Void)
+import           Control.Applicative hiding (many, some)
+import           Data.Map            as M
 --import           Debug.Trace                (traceShowM)
-import qualified Options.Applicative        as O
-import           System.Exit                (exitFailure)
+import qualified Options.Applicative as O
+import           System.Exit         (exitFailure)
 import           System.IO
     ( IOMode (ReadMode)
     , hGetContents'
@@ -17,88 +16,11 @@ import           System.IO
     , stderr
     , stdin
     )
-import           Text.Megaparsec
-import           Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as L
 import           Text.RawString.QQ
-import           Toml                       as TM
+import           Toml                as TM
 
-data Subquery = Key !String | Index !Int
-
-instance Show Subquery where
-  show (Key s)   = "(Key:" ++ s ++ ")"
-  show (Index i) = "[" ++ show i ++ "]"
-
--- Query cannot be empty and the first subquery must always be Key
--- (i.e. !String)
-data Query = Query !String ![Subquery] deriving Show
-
-type Parser = Parsec Void String
-
-data Error
-  = InvalidQuery
-  | IndexOnTable
-  | KeyOnArray
-  | NonLeafNode
-  | IndexOutOfRange !Int
-  | KeyError !String
-  | TomlError
-  | PastLeafNode
-  | EmptyDoc
-
-instance Show Error where
-  show InvalidQuery        = "Invalid query"
-  show IndexOnTable        = "Trying to index a table"
-  show KeyOnArray          = "Trying to key into an array"
-  show NonLeafNode         = "Querying a non-leaf node"
-  show (IndexOutOfRange i) = "Index out of range: " ++ show i
-  show (KeyError k)        = "Key does not exist: '" ++ k ++ "'"
-  show TomlError           = "Invalid TOML file"
-  show PastLeafNode        = "Trying to query past leaf node"
-  show EmptyDoc            = "Input is empty"
-
--- Command line args
-data Args
-  = Args
-  { queryStr :: !String
-  , filePath :: !String
-  } deriving Show
-
----- Query parsing
-parseQueries :: String -> Either Error [Query]
-parseQueries queryString =
-  case parseMaybe (parseQuery `sepBy` querySep <* eof) queryString of
-    Just (q:qs) -> Right (q:qs)
-    _otherwise  -> traceShowM' _otherwise >> Left InvalidQuery
-
-  where
-    subquerySep :: Parser Char
-    subquerySep = char '.'
-
-    querySep :: Parser Char
-    querySep = char ','
-
-    parseQuery :: Parser Query
-    parseQuery = do
-      -- E.g. For query = "a.b.c",
-      -- k would be "a",
-      -- and maybeQuery would be Just [Key "b", Key "b"]
-      Key k <- parseSubqueryKey
-      -- Need optional since it could be empty
-      maybeQuery <- optional (subquerySep >> parseSubqueries)
-      pure $ maybe (Query k []) (Query k) maybeQuery
-
-    parseSubqueries :: Parser [Subquery]
-    parseSubqueries = parseSubquery `sepBy` subquerySep
-
-    parseSubqueryKey :: Parser Subquery
-    parseSubqueryKey = Key <$> some (alphaNumChar <|> char '_')
-
-    parseSubqueryIndex :: Parser Subquery
-    parseSubqueryIndex = char '[' >> Index <$> L.decimal <* char ']'
-
-    parseSubquery :: Parser Subquery
-    parseSubquery = parseSubqueryKey <|> parseSubqueryIndex
+import           Tomlq.Parser
+import           Tomlq.Types
 
 ---- Query a list
 ---- ogIndex - the original index used for composing error message
