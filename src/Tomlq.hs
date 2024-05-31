@@ -25,12 +25,15 @@ import           Tomlq.Types
 
 ---- Query a list
 ---- ogIndex - the original index used for composing error message
-queryList :: Int -> Int -> [a] -> Either Error a
-queryList ogIndex index list | index < 0 = Left (IndexOutOfRange ogIndex)
-                             | otherwise = case (list, index) of
-                                 ([], _)   -> Left (IndexOutOfRange ogIndex)
-                                 (x:_, 0)  -> Right x
-                                 (_:xs, _) -> queryList ogIndex (index-1) xs
+queryList :: Int -> [a] -> Either Error a
+queryList ogIndex list =
+  if ogIndex < 0
+  then Left (IndexOutOfRange ogIndex)
+  else go ogIndex list
+  where
+    go _ []         = Left (IndexOutOfRange ogIndex)
+    go 0 (x:_)      = Right x
+    go index (_:xs) = go (index-1) xs
 
 -- Query a table
 queryTable :: String -> Table -> Either Error Value
@@ -44,7 +47,7 @@ queryValue [] value = Right value
 queryValue (q:qs) value =
   case (q, value) of
     (Key k', Table table)  -> queryTable k' table >>= queryValue qs
-    (Index idx, Array arr) -> queryList idx idx arr >>= queryValue qs
+    (Index idx, Array arr) -> queryList idx arr >>= queryValue qs
     (Key _, Array _)       -> Left KeyOnArray
     (Index _, Table _)     -> Left IndexOnTable
     _otherwise             -> Left PastLeafNode
@@ -98,8 +101,7 @@ main = do
           val <- maybe (Left (KeyError k)) Right (M.lookup k doc)
           queryValue query val
   case head <$> result of
-    Left err    -> do
-        hPrint stderr err >> exitFailure
+    Left err    -> hPrint stderr err >> exitFailure
     Right value -> putStrLn $ showValue value
   where
     readFileOrStdin :: String -> IO String
