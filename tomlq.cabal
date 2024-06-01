@@ -56,14 +56,12 @@ executable tomlq
                        -Wpartial-fields
                        -Wredundant-constraints
 
--- tests:
---   my-project-test:
---     main:                Spec.hs
---     source-dirs:         test
---     ghc-options:
---     - -threaded
---     - -rtsopts
---     - -with-rtsopts=-N
---     dependencies:
---     - tomlq
---     - doctest                       
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:  base
+                , tomlq
+                , doctest
+               

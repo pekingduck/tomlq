@@ -1,3 +1,3 @@
 import           Test.DocTest
 
-main = doctest ["-isrc", "src/Tomlq/Doc.hs"]
+main = doctest ["-ilib", "lib/Tomlq/Doc.hs"]
