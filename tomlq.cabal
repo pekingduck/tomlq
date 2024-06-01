@@ -15,20 +15,37 @@ build-type:          Simple
 extra-source-files:  README.md
                      CHANGELOG.md
 
-executable tomlq
-  hs-source-dirs:      src
-  main-is:             Tomlq.hs
-  other-modules:       Tomlq.Types
+library
+  hs-source-dirs:      lib
+  exposed-modules:     Tomlq.Types
                      , Tomlq.Parser
                      , Tomlq.Doc
-  default-language:    Haskell2010
-  build-depends:       base >= 4.7 && < 5
-                     , text
+  build-depends: base >= 4.7 && < 5
+  default-language: Haskell2010
+  build-depends:       base
+                     , parser-combinators
                      , toml-parser
                      , megaparsec
                      , containers
+                     
+  ghc-options:         -Wall
+                       -Wcompat
+                       -Widentities
+                       -Wincomplete-record-updates
+                       -Wincomplete-uni-patterns
+                       -Wmissing-export-lists
+                       -Wmissing-home-modules
+                       -Wpartial-fields
+                       -Wredundant-constraints  
+                               
+executable tomlq
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
                      , optparse-applicative
                      , raw-strings-qq
+                     , tomlq
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
@@ -38,3 +55,15 @@ executable tomlq
                        -Wmissing-home-modules
                        -Wpartial-fields
                        -Wredundant-constraints
+
+-- tests:
+--   my-project-test:
+--     main:                Spec.hs
+--     source-dirs:         test
+--     ghc-options:
+--     - -threaded
+--     - -rtsopts
+--     - -with-rtsopts=-N
+--     dependencies:
+--     - tomlq
+--     - doctest                       
