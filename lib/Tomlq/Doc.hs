@@ -16,17 +16,28 @@ import           Toml          as TM
 import           Tomlq.Parser
 import           Tomlq.Types
 
----- Query a list
----- ogIndex - the original index used for composing error message
+-- | Query a list
+--
+-- doctests
+--
+-- >>> queryList 0 []
+-- Left Index out of range: 0
+-- >>> queryList (negate 1) []
+-- Left Index out of range: -1
+-- >>> queryList 2 ["a", "b"]
+-- Left Index out of range: 2
+-- >>> queryList 1 ["a", "b"]
+-- Right "b"
+
 queryList :: Int -> [a] -> Either Error a
-queryList ogIndex list =
-  if ogIndex < 0
-  then Left (IndexOutOfRange ogIndex)
-  else go ogIndex list
+queryList index list =
+  if index < 0
+  then Left (IndexOutOfRange index)
+  else go index list
   where
-    go _ []         = Left (IndexOutOfRange ogIndex)
-    go 0 (x:_)      = Right x
-    go index (_:xs) = go (index-1) xs
+    go _ []          = Left (IndexOutOfRange index)
+    go 0 (x:_)       = Right x
+    go index' (_:xs) = go (index' - 1) xs
 
 -- Query a table
 queryTable :: String -> Table -> Either Error Value
