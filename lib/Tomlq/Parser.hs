@@ -15,8 +15,8 @@ type Parser = Parsec Void String
 parseQueries :: String -> Either Error [Query]
 parseQueries queryString =
   case parseMaybe (parseQuery `sepBy` querySep <* eof) queryString of
-    Just (q:qs) -> Right (q:qs)
-    _otherwise  -> Left InvalidQuery
+    Just q     -> Right q
+    _otherwise -> Left InvalidQuery
 
 subquerySep :: Parser Char
 subquerySep = char '.'

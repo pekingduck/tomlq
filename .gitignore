@@ -4,3 +4,4 @@ TAGS
 *.db
 aux/init.sh
 .envrc
+.hie/
