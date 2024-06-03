@@ -7,13 +7,13 @@ jobs:
       matrix:
         ghc: ['9.6.4']
         os: [ubuntu-latest, macOS-latest]
-    name: Haskell GHC ${{ matrix.ghc }} sample
+    name: Haskell GHC ${{ matrix.ghc }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup Haskell
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6.4' # Exact version of ghc to use
+          ghc-version: ${{ matrix.ghc }} # Exact version of ghc to use
           # cabal-version: 'latest'. Omitted, but defaults to 'latest'
           enable-stack: true
           stack-version: 'latest'
