@@ -12,17 +12,17 @@ import           Tomlq.Types
 type Parser = Parsec Void String
 
 ---- Query parsing
-parseQueries :: String -> Either Error [Query]
-parseQueries queryString =
-  case parseMaybe (parseQuery `sepBy` querySep <* eof) queryString of
-    Just q     -> Right q
-    _otherwise -> Left InvalidQuery
-
 subquerySep :: Parser Char
 subquerySep = char '.'
 
 querySep :: Parser Char
 querySep = char ','
+
+parseQueries :: String -> Either Error [Query]
+parseQueries queryString =
+  case parseMaybe (parseQuery `sepBy` querySep <* eof) queryString of
+    Just (x:xs) -> Right (x:xs)
+    _otherwise  -> Left InvalidQuery  -- include Just []
 
 parseQuery :: Parser Query
 parseQuery = do

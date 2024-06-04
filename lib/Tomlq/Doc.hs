@@ -7,6 +7,7 @@ module Tomlq.Doc
   , showValue
   , parseTOML
   , processQueries
+  , processQuery
   ) where
 
 import           Control.Monad (forM)
@@ -79,6 +80,10 @@ processQueries :: String -> String -> Either Error [Value]
 processQueries queryString content = do
   queries <- parseQueries queryString
   doc <- parseTOML content
-  forM queries $ \(Query k query) -> do
-    val <- maybe (Left (KeyError k)) Right (M.lookup k doc)
-    queryValue query val
+  forM queries $ \query -> processQuery query doc
+    -- val <- maybe (Left (KeyError k)) Right (M.lookup k doc)
+    -- queryValue query val
+
+processQuery :: Query -> Map String Value -> Either Error Value
+processQuery (Query k query) doc =
+  maybe (Left (KeyError k)) Right (M.lookup k doc) >>= queryValue query

@@ -1,5 +1,5 @@
 on: [push]
-name: build
+name: tomlq
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -7,7 +7,7 @@ jobs:
       matrix:
         ghc: ['9.6.4']
         os: [ubuntu-latest, macOS-latest]
-    name: Haskell GHC ${{ matrix.ghc }}
+    name: Haskell GHC ${{ matrix.ghc }} (${{ matrix.os }})
     steps:
       - uses: actions/checkout@v4
       - name: Setup Haskell

@@ -7,7 +7,7 @@ module Tomlq.Types
   , Args(..)
   ) where
 
-data Subquery = Key !String | Index !Int
+data Subquery = Key !String | Index !Int deriving Eq
 
 instance Show Subquery where
   show (Key s)   = "(Key:" ++ s ++ ")"
@@ -15,7 +15,7 @@ instance Show Subquery where
 
 -- Query cannot be empty and the first subquery must always be Key
 -- (i.e. !String)
-data Query = Query !String ![Subquery] deriving Show
+data Query = Query !String ![Subquery] deriving (Show, Eq)
 
 data Error
   = InvalidQuery
@@ -27,6 +27,7 @@ data Error
   | TomlError
   | PastLeafNode
   | EmptyDoc
+  deriving Eq
 
 instance Show Error where
   show InvalidQuery        = "Invalid query"
